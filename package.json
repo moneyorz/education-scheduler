@@ -1,0 +1,27 @@
+{
+  "name": "education-scheduler",
+  "version": "1.0.0",
+  "description": "",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "dev": "concurrently -k \"node server.js\" \"vite --host 127.0.0.1\"",
+    "build": "vite build",
+    "start": "node server.js",
+    "backup": "node backup.js",
+    "test": "node --test"
+  },
+  "keywords": [],
+  "dependencies": {
+    "better-sqlite3": "^13.0.3",
+    "concurrently": "^10.0.5",
+    "exceljs": "^4.4.0",
+    "express": "^5.2.1"
+  },
+  "devDependencies": {
+    "vite": "^8.3.1"
+  },
+  "overrides": {
+    "uuid": "^11.1.1"
+  }
+}

@@ -1,0 +1,67 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { locked } from '../api/handlers.js';
+
+test('台灣時間明日 15:00 起鎖定；今日與過去也鎖定',()=>{
+  assert.equal(locked('2026-09-26','2026-09-25T14:59:59'),false);
+  assert.equal(locked('2026-09-26','2026-09-25T15:00:00'),true);
+  assert.equal(locked('2026-09-27','2026-09-25T15:00:00'),false);
+  assert.equal(locked('2026-09-25','2026-09-25T09:00:00'),true);
+});
+
+test('本機資料庫：匯入去重、共用位置圖、同時搶位、改期釋位、退訓',async()=>{
+  const dir=mkdtempSync(join(tmpdir(),'education-scheduler-test-'));
+  const port=31000+Math.floor(Math.random()*1000);
+  const child=spawn(process.execPath,['server.js'],{cwd:join(import.meta.dirname,'..'),env:{...process.env,DATA_DIR:dir,PORT:String(port)},stdio:'ignore'});
+  const base=`http://127.0.0.1:${port}/api`;
+  const get=async()=>{const r=await fetch(base+'/state');return r.json()};
+  const post=async(path,body)=>{const r=await fetch(base+path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});return {status:r.status,data:await r.json()}};
+  try {
+    let ready=false;for(let i=0;i<80;i++){try{await get();ready=true;break}catch{await new Promise(r=>setTimeout(r,100))}}assert.ok(ready,'server started');
+    const imported=await post('/students/import',{rows:[{agency:'甲機關',name:'王甲',position:'組長'},{agency:'乙機關',name:'李乙',position:'科員'},{agency:'甲機關',name:'王甲',position:'組長'}]});
+    assert.equal(imported.data.added,2);assert.equal(imported.data.skipped,1);
+    assert.equal((await post('/students/import',{rows:[{agency:'甲機關',name:'王甲',position:'組長'}]})).data.added,0);
+    await post('/rooms',{name:'第一教室',cols:27,rows:2});
+    let state=await get(),room=state.rooms[0];
+    assert.equal((await post('/rooms/layout',{roomId:room.id,seats:[{x:1,y:1},{x:2,y:1},{x:27,y:2}],aisles:[{x:2,y:0}],podium_x:14,podium_y:0})).status,200);
+    state=await get();assert.equal(state.seats.length,3);assert.deepEqual(state.aisles.map(a=>[a.x,a.y]),[[2,0]]);assert.deepEqual(state.seats.map(x=>[x.x,x.y]),[[1,1],[2,1],[27,2]]);
+    assert.equal((await post('/rooms/layout',{roomId:room.id,seats:[{x:1,y:1}],aisles:[{x:27,y:0}],podium_x:14,podium_y:0})).status,400);
+    const first='2026-10-01',second='2026-10-02';
+    await post('/sessions',{date:first,roomId:room.id});await post('/sessions',{date:second,roomId:room.id});
+    state=await get();assert.equal(state.sessions.length,2);
+    const s1=state.sessions.find(x=>x.date===first),s2=state.sessions.find(x=>x.date===second),seat=state.seats[0],seat2=state.seats[1];
+    const [a,b]=await Promise.all(state.students.map(x=>post('/assign',{studentId:x.id,sessionId:s1.id,seatId:seat.id})));
+    assert.deepEqual([a.status,b.status].sort(),[200,409]);
+    state=await get();assert.equal(state.assignments.length,1);
+    const winner=state.assignments[0].student_id,loser=state.students.find(x=>x.id!==winner).id;
+    assert.equal((await post('/assign',{studentId:loser,sessionId:s1.id,seatId:seat2.id})).status,200);
+    assert.equal((await post('/assign',{studentId:winner,sessionId:s2.id,seatId:seat.id})).status,200);
+    state=await get();assert.equal(state.assignments.length,2);assert.ok(!state.assignments.some(x=>x.student_id===winner&&x.session_id===s1.id));
+    const loserAssignment=state.assignments.find(x=>x.student_id===loser);
+    assert.equal((await post('/assessment',{assignmentId:loserAssignment.id,status:'通過',note:'測試註記'})).status,200);
+    assert.equal((await post('/unassign',{assignmentId:loserAssignment.id})).status,200);
+    state=await get();assert.equal(state.assignments.length,1);assert.equal(state.students.find(x=>x.id===loser).status,'active');
+    assert.equal((await post('/assign',{studentId:loser,sessionId:s1.id,seatId:seat2.id})).status,200);
+    assert.equal((await post('/rooms/layout',{roomId:room.id,seats:[{x:1,y:1}],podium_x:14,podium_y:0})).status,409);
+    assert.equal((await post('/students/withdraw',{studentId:loser})).status,200);
+    state=await get();assert.equal(state.assignments.length,1);assert.equal(state.students.find(x=>x.id===loser).status,'withdrawn');
+    assert.equal((await post('/sessions/update',{sessionId:s2.id,date:'2026-10-03',resetAssignments:false})).status,200);
+    state=await get();assert.equal(state.assignments.length,1);assert.equal(state.sessions.find(x=>x.id===s2.id).date,'2026-10-03');
+    assert.equal((await post('/sessions/update',{sessionId:s2.id,date:'2026-10-04',resetAssignments:true})).status,200);
+    state=await get();assert.equal(state.assignments.length,0);assert.equal(state.students.find(x=>x.id===winner).status,'active');
+    assert.equal((await post('/assign',{studentId:winner,sessionId:s1.id,seatId:seat.id})).status,200);
+    assert.equal((await post('/sessions/delete',{sessionId:s1.id})).status,200);
+    state=await get();assert.equal(state.assignments.length,0);assert.equal(state.sessions.length,1);
+    assert.equal((await post('/sessions/delete',{sessionId:s1.id})).status,404);
+    assert.equal((await post('/students/delete',{studentId:loser})).status,200);
+    state=await get();assert.equal(state.students.length,1);
+    assert.equal((await post('/assign',{studentId:winner,sessionId:s2.id,seatId:seat.id})).status,200);
+    assert.equal((await post('/rooms/delete',{roomId:room.id})).status,200);
+    state=await get();assert.equal(state.rooms.length,0);assert.equal(state.sessions.length,0);assert.equal(state.assignments.length,0);assert.equal(state.students.length,1);
+    assert.equal((await post('/rooms/delete',{roomId:room.id})).status,404);
+  } finally {child.kill();await new Promise(resolve=>child.once('exit',resolve));rmSync(dir,{recursive:true,force:true})}
+});
