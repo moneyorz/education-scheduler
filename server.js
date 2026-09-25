@@ -45,5 +45,4 @@ if(existsSync(dist)){
   app.get('/{*path}',(_req,res)=>res.sendFile(join(dist,'index.html')));
 }
 const port=Number(process.env.PORT||3000);
-const host=process.env.HOST||(process.env.RAILWAY_ENVIRONMENT?'0.0.0.0':'127.0.0.1');
-app.listen(port,host,()=>console.log(`教育訓練排班：http://${host}:${port}，資料庫：${join(dataDir,'scheduler.sqlite')}`));
+app.listen(port,'127.0.0.1',()=>console.log(`教育訓練排班：http://127.0.0.1:${port}，資料庫：${join(dataDir,'scheduler.sqlite')}`));
