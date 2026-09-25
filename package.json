@@ -4,16 +4,20 @@
   "description": "",
   "type": "module",
   "main": "server.js",
-  "engines": { "node": ">=24 <25" },
+  "engines": {
+    "node": ">=24 <25"
+  },
   "scripts": {
     "dev": "concurrently -k \"node server.js\" \"vite --host 127.0.0.1\"",
     "build": "vite build",
     "start": "node server.js",
     "backup": "node backup.js",
+    "migrate:turso": "node migrate-to-turso.js",
     "test": "node --test"
   },
   "keywords": [],
   "dependencies": {
+    "@libsql/client": "^0.15.15",
     "better-sqlite3": "^13.0.3",
     "concurrently": "^10.0.5",
     "exceljs": "^4.4.0",

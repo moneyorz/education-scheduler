@@ -1,6 +1,6 @@
-# 教育訓練排班系統（本機 SQLite 版）
+# 教育訓練排班系統
 
-網站可在本機運作，資料保存在 `data/scheduler.sqlite`。部署到 Railway 時，SQLite 必須放在持久磁碟。第一版沒有登入功能。
+網站在本機以 SQLite 儲存資料；部署到 Render 時以 Turso 雲端資料庫儲存資料。第一版沒有登入功能，任何知道網址的人均能查看與修改資料。
 
 ## 啟動
 
@@ -40,8 +40,11 @@ npm start
 
 執行 `npm test`，會使用獨立的暫存資料庫測試匯入去重、座位衝突、改期、退訓、座位圖與 15:00 規則。測試資料不會寫入正式的 `data/scheduler.sqlite`。
 
-## 對外使用時
+## 對外使用：Render + Turso
 
-本機版預設僅監聽 `127.0.0.1`。Railway 會提供 `PORT` 並使網站監聽外部連線；部署時須將持久 Volume 掛載於 `/data`，設定 `DATA_DIR=/data`。若沒有持久 Volume，SQLite 資料會在重新部署或重啟後遺失。
+1. 在 Turso 免費方案建立資料庫與資料庫權杖，記下資料庫網址（`libsql://...`）和權杖。不要將權杖放入 GitHub。
+2. 在 Render 建立 Blueprint，連接此 GitHub 儲存庫。`render.yaml` 會建立免費的 Web Service；在環境變數欄填入 `TURSO_DATABASE_URL` 與 `TURSO_AUTH_TOKEN`。首次啟動會自動建立資料表。
+3. 如要將本機現有資料搬到雲端，先確認 Render 網站已啟動，再於本機設定相同的兩個環境變數，執行 `npm run migrate:turso`。此指令只匯入到空的 Turso 資料庫，避免覆蓋已有資料。請勿把本機資料庫或權杖提交到 GitHub。
+4. Render 提供 `onrender.com` 公開網址。免費服務閒置後會休眠，再次開啟可能需要約一分鐘；網站檔案系統是暫時性的，所以正式資料必須放在 Turso。
 
-Railway 免費試用以時間與額度兩者先到者為準，網站可能在一個月內停止。使用前應定期下載資料庫備份。網站沒有登入功能，任何取得對外網址的人均能查看及修改資料。
+本機未設定 `TURSO_DATABASE_URL` 時，繼續使用 `data/scheduler.sqlite`。Turso 免費方案與 Render 免費方案各有用量上限，請在各自控制台查看實際使用量。不要加上付款方式或啟用付費方案，除非您打算付費。

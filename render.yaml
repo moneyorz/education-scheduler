@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: education-scheduler
+    runtime: docker
+    plan: free
+    envVars:
+      - key: TURSO_DATABASE_URL
+        sync: false
+      - key: TURSO_AUTH_TOKEN
+        sync: false

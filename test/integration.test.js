@@ -13,10 +13,13 @@ test('台灣時間明日 15:00 起鎖定；今日與過去也鎖定',()=>{
   assert.equal(locked('2026-09-25','2026-09-25T09:00:00'),true);
 });
 
-test('本機資料庫：匯入去重、共用位置圖、同時搶位、改期釋位、退訓',async()=>{
+for (const mode of ['本機 SQLite', 'Turso 相容連線']) test(`${mode}：匯入去重、共用位置圖、同時搶位、改期釋位、退訓`,async()=>{
   const dir=mkdtempSync(join(tmpdir(),'education-scheduler-test-'));
   const port=31000+Math.floor(Math.random()*1000);
-  const child=spawn(process.execPath,['server.js'],{cwd:join(import.meta.dirname,'..'),env:{...process.env,DATA_DIR:dir,PORT:String(port)},stdio:'ignore'});
+  const env={...process.env,DATA_DIR:dir,PORT:String(port)};
+  if(mode==='Turso 相容連線') env.TURSO_DATABASE_URL=`file:${join(dir,'remote.sqlite').replaceAll('\\','/')}`;
+  else delete env.TURSO_DATABASE_URL;
+  const child=spawn(process.execPath,['server.js'],{cwd:join(import.meta.dirname,'..'),env,stdio:'ignore'});
   const base=`http://127.0.0.1:${port}/api`;
   const get=async()=>{const r=await fetch(base+'/state');return r.json()};
   const post=async(path,body)=>{const r=await fetch(base+path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});return {status:r.status,data:await r.json()}};
